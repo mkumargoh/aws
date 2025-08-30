@@ -14,7 +14,6 @@ pipeline {
         stage('Terraform Init') {
             steps {
                 sh '''
-                cd EC2_VPC
                 terraform init
                 '''
             }
@@ -22,7 +21,6 @@ pipeline {
         stage('Terraform Plan') {
             steps {
                 sh '''
-                cd EC2_VPC
                 terraform plan -out=tfplan
                 '''
             }
@@ -33,7 +31,6 @@ pipeline {
             }
             steps {
                 sh '''
-                cd EC2_VPC
                 terraform apply -auto-approve tfplan
                 '''
             }
