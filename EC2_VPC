@@ -1,0 +1,145 @@
+# create provider
+terraform {
+    required_providers {
+        aws = {
+        source  = "hashicorp/aws"
+        version = "~> 4.0"
+        }
+    }
+    required_version = ">= 1.0.0"
+}
+provider "aws" {
+    region = "us-east-1"
+}
+# create vpc
+resource "aws_vpc" "practice" {
+    cidr_block = "192.168.0.0/16"
+    tags = {
+        Name = "practice"
+    }
+}
+# create subnet
+resource "aws_subnet" "practice" {
+    vpc_id            = aws_vpc.practice.id
+    cidr_block        = "192.168.1.0/24"
+    tags = {
+        Name = "practice"
+    }
+}
+# create internet gateway
+resource "aws_internet_gateway" "practice" {
+    vpc_id = aws_vpc.practice.id
+    tags = {
+        Name = "practice"
+    }
+}
+# create route table
+resource "aws_route_table" "practice" {
+    vpc_id = aws_vpc.practice.id
+    route {
+        cidr_block = "0.0.0.0/0"
+        gateway_id = aws_internet_gateway.practice.id
+    }
+    tags = {
+        Name = "practice"
+    }
+}
+# associate route table with subnet
+resource "aws_route_table_association" "a" {
+    subnet_id      = aws_subnet.practice.id
+    route_table_id = aws_route_table.practice.id
+}
+# create elastic ip
+resource "aws_eip" "ip" {
+    vpc = true
+    tags = {
+        Name = "ip"
+    }
+}
+# attach elastic ip to instance
+resource "aws_eip_association" "a" {
+    instance_id   = aws_instance.web.id
+    allocation_id = aws_eip.ip.id
+}
+
+# create security group
+resource "aws_security_group" "allow_ssh" {
+    name        = "allow_ssh"
+    description = "Allow SSH inbound traffic"
+    vpc_id      = aws_vpc.practice.id
+    ingress {
+        description      = "SSH"
+        from_port        = 22
+        to_port          = 22
+        protocol         = "tcp"
+        cidr_blocks      = ["0.0.0.0/0"]
+        ipv6_cidr_blocks = ["::/0"]
+    }
+    ingress {
+        description      = "HTTP"
+        from_port        = 80
+        to_port          = 80
+        protocol         = "tcp"
+        cidr_blocks      = ["0.0.0.0/0"]
+        ipv6_cidr_blocks = ["::/0"]
+    }
+    ingress {
+        description      = "HTTPS"
+        from_port        = 443
+        to_port          = 443
+        protocol         = "tcp"
+        cidr_blocks      = ["0.0.0.0/0"]
+        ipv6_cidr_blocks = ["::/0"]
+    }
+        egress {
+        from_port        = 0
+        to_port          = 0
+        protocol         = "-1"
+        cidr_blocks      = ["0.0.0.0/0"]
+        ipv6_cidr_blocks = ["::/0"]
+    }
+    tags = {
+        Name = "allow_ssh"
+    }
+}
+# # create key pair
+# resource "aws_key_pair" "deployer" {
+#     key_name   = "deployer"
+#     public_key = file("~/.ssh/id_rsa.pub")
+# }
+
+
+# Create Ec2 instance without hardcoded ami
+data "aws_ami" "ubuntu" {
+    most_recent = true
+    owners      = ["099720109477"] # Canonical
+    filter {
+        name   = "name"
+        values = ["ubuntu/images/hvm-ssd/ubuntu-focal-20.04-amd64-server-*"]
+    }
+    filter {
+        name   = "virtualization-type"
+        values = ["hvm"]
+    }
+}
+# create ec2 instance
+resource "aws_instance" "web" {
+    ami                         = data.aws_ami.ubuntu.id
+    instance_type               = "t2.micro"
+    subnet_id                   = aws_subnet.practice.id
+    vpc_security_group_ids      = [aws_security_group.allow_ssh.id]
+    key_name                    = "test"  # make sure this key pair exists in your AWS account
+    associate_public_ip_address = true # Ensure the instance gets a public IP
+    user_data                   = <<-EOF
+                #!/bin/bash
+                sudo apt-get update -y
+                sudo apt-get install -y apache2
+                sudo systemctl start apache2
+                sudo systemctl enable apache2 
+                sudo ufw allow 'Apache'
+                sudo echo "<h1>Welcome to Apche Server</h1>" > /var/www/html/index.html
+                EOF
+    tags = {
+        Name = "web"
+    }
+}
